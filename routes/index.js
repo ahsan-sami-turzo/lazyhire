@@ -1,9 +1,9 @@
-// routes/index.js
+// routes/index.js (CORRECTED VERSION)
 
 const express = require('express');
 
 // Export a function that accepts dependencies
-module.exports = ({ db, ai, upload, fs, runScraper, sendDailyDigest }) => {
+module.exports = ({ Application, ai, upload, fs, runScraper, sendDailyDigest }) => {
     const router = express.Router();
     
     // Helper function used in dashboard route
@@ -11,15 +11,17 @@ module.exports = ({ db, ai, upload, fs, runScraper, sendDailyDigest }) => {
 
 
     // -----------------------------------------------------------------
-    // 🏠 DASHBOARD / APPLICATION TRACKER ROUTES
+    // 🏠 DASHBOARD / APPLICATION TRACKER ROUTES (FIXED CRUD)
     // -----------------------------------------------------------------
 
     // GET: Dashboard / List all Applications
-    router.get('/', (req, res) => {
-        db.all('SELECT * FROM applications ORDER BY id DESC', [], (err, jobs) => {
-            if (err) {
-                return res.status(500).send("Database Error: " + err.message);
-            }
+    router.get('/', async (req, res) => { // <-- Made async
+        try {
+            // FIX: Use Sequelize Application Model
+            const jobs = await Application.findAll({ 
+                order: [['id', 'DESC']],
+                raw: true // Return plain objects for EJS
+            }); 
 
             const statusCounts = jobs.reduce((acc, job) => {
                 const status = job.status || 'New';
@@ -39,7 +41,10 @@ module.exports = ({ db, ai, upload, fs, runScraper, sendDailyDigest }) => {
                 jobCount: jobs.length,
                 statusCounts: finalStatusCounts,
             });
-        });
+        } catch (err) {
+            console.error('Sequelize Dashboard Error:', err.message);
+            return res.status(500).send("Database Error: " + err.message);
+        }
     });
 
     // GET: Form to add a new application
@@ -51,37 +56,37 @@ module.exports = ({ db, ai, upload, fs, runScraper, sendDailyDigest }) => {
     });
 
     // POST: Handle form submission to add new application (CREATE)
-    router.post('/add', (req, res) => {
+    router.post('/add', async (req, res) => { // <-- Made async
         const { title, company, location, notes, date_applied } = req.body;
-        const sql = `INSERT INTO applications (title, company, location, notes, date_applied) VALUES (?, ?, ?, ?, ?)`;
         
-        db.run(sql, [title, company, location, notes, date_applied], function(err) {
-            if (err) {
-                console.error(err.message);
-                return res.status(500).send('Error adding application.');
-            }
+        try {
+            // FIX: Use Sequelize Application Model
+            await Application.create({ title, company, location, notes, date_applied });
             res.redirect('/');
-        });
+        } catch (err) {
+            console.error('Sequelize Create Error:', err.message);
+            return res.status(500).send('Error adding application.');
+        }
     });
 
     // POST: Update application status (UPDATE)
-    router.post('/update/:id', (req, res) => {
+    router.post('/update/:id', async (req, res) => { // <-- Made async
         const { status } = req.body;
         const id = req.params.id;
-        const sql = `UPDATE applications SET status = ? WHERE id = ?`;
-
-        db.run(sql, [status, id], function(err) {
-            if (err) {
-                console.error(err.message);
-                return res.status(500).send('Error updating status.');
-            }
+        
+        try {
+            // FIX: Use Sequelize Application Model
+            await Application.update({ status: status }, { where: { id: id } });
             res.redirect('/');
-        });
+        } catch (err) {
+            console.error('Sequelize Update Error:', err.message);
+            return res.status(500).send('Error updating status.');
+        }
     });
 
 
     // -----------------------------------------------------------------
-    // 📄 AI UTILITIES ROUTES
+    // 📄 AI UTILITIES ROUTES (No changes needed, already uses 'ai')
     // -----------------------------------------------------------------
 
     // GET: Resume Tailor Form
@@ -160,7 +165,7 @@ module.exports = ({ db, ai, upload, fs, runScraper, sendDailyDigest }) => {
 
 
     // -----------------------------------------------------------------
-    // ⚙️ SCRAPER / API ROUTES
+    // ⚙️ SCRAPER / API ROUTES (No changes needed)
     // -----------------------------------------------------------------
 
     // Manual Scraper Trigger
@@ -173,9 +178,8 @@ module.exports = ({ db, ai, upload, fs, runScraper, sendDailyDigest }) => {
             .catch(err => console.error('Manual scrape failed:', err.message));
     });
     
-    // Autofill foundation route (uses dependency injection, but logic is simplified here)
+    // Autofill foundation route
     router.post('/applications/autofill/:applicationId', (req, res) => {
-        // Placeholder for future logic that will use Puppeteer/Playwright
         res.json({ status: 'info', message: 'Autofill feature is active but currently simulated.' });
     });
 
