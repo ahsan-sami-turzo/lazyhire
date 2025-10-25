@@ -71,7 +71,7 @@ async function initializeDatabase() {
         await Profile.sync({ force: false });
         console.log('Applications and Profile table synced.');
         
-        return { sequelize, Application };
+        return { sequelize, Application, Profile };
     } catch (err) {
         console.error('Database setup failed:', err);
         // Throw the error to be handled by server.js (e.g., stopping the app)

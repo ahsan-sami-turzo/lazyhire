@@ -16,10 +16,10 @@
         <div class="col-md-9">
             <h1 class="mb-4">Profile Details (CV Data)</h1>
             
-            <% if (req.query.saved) { %>
+            <% if (query.saved) { %>
                 <div class="alert alert-success">Profile saved successfully!</div>
             <% } %>
-            <% if (req.query.cv_created) { %>
+            <% if (query.cv_created) { %>
                 <div class="alert alert-info">Base CV template created/updated in `documents/base_template_cv.md`!</div>
             <% } %>
 

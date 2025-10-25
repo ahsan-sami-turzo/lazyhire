@@ -1,7 +1,7 @@
 // routes/index.js (CORRECTED VERSION)
 
 const express = require('express');
-
+const path = require('path');
 const sanitize = (name) => name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
 
 // Export a function that accepts dependencies
@@ -215,15 +215,25 @@ module.exports = ({ Application, Profile, ai, upload, fs, runScraper, sendDailyD
     // -----------------------------------------------------------------
     // ⚙️ PROFILE ROUTES
     // -----------------------------------------------------------------
-    const initialProfileData = {
-        full_name: "Solo Developer",
-        job_title: "Full Stack Developer",
-        contact_email: "solo.dev@example.com",
-        phone: "123-456-7890",
-        summary: "Expert in Node.js, Express, EJS, and database systems (Sequelize/SQLite). Dedicated to building efficient, full-featured web applications.",
-        experience: [{ title: "Lead Dev", company: "LazyHire Inc.", duration: "2023-Present" }],
-        education: [{ degree: "MSc Computer Science", institution: "Tech University" }],
-        skills: ["Node.js", "Sequelize", "Gemini API", "HTML/CSS", "JavaScript"],
+    
+    // --- HELPER FUNCTION TO LOAD INITIAL PROFILE DATA ---
+    const loadInitialProfileData = () => {
+        const filePath = path.join(__dirname, '..', 'profile_data.json');
+        try {
+            const data = fs.readFileSync(filePath, 'utf8');
+            const profile = JSON.parse(data);
+            
+            // Convert array fields back to JSON strings for Sequelize storage
+            profile.experience = JSON.stringify(profile.experience);
+            profile.education = JSON.stringify(profile.education);
+            profile.skills = JSON.stringify(profile.skills);
+
+            return profile;
+        } catch (error) {
+            console.error("CRITICAL: Failed to load or parse profile_data.json:", error.message);
+            // Return minimal fallback data if file read fails
+            return { full_name: "Fallback User", job_title: "Developer", summary: "Default profile.", skills: "[]", experience: "[]", education: "[]" };
+        }
     };
 
     router.get('/profile', async (req, res) => {
@@ -231,11 +241,14 @@ module.exports = ({ Application, Profile, ai, upload, fs, runScraper, sendDailyD
             let profile = await Profile.findByPk(1, { raw: true });
 
             if (!profile) {
+                // Load data from file when creating the initial record
+                const initialDataFromFile = loadInitialProfileData();
+
                 // Create initial data if not found (simulating first login/CV import)
                 profile = await Profile.create({ 
                     id: 1, 
                     full_name: req.session.username, 
-                    ...initialProfileData 
+                    ...initialDataFromFile 
                 }, { raw: true });
             }
             
@@ -244,7 +257,12 @@ module.exports = ({ Application, Profile, ai, upload, fs, runScraper, sendDailyD
                 profile.skills = JSON.parse(profile.skills);
             }
 
-            res.render('profile', { pageTitle: 'My Profile', user: req.session.username, profile: profile });
+            res.render('profile', { 
+                pageTitle: 'My Profile', 
+                user: req.session.username, 
+                profile: profile,                
+                query: req.query 
+            });
         } catch (error) {
             console.error('Profile Load Error:', error);
             res.status(500).send('Could not load profile.');
@@ -321,7 +339,7 @@ module.exports = ({ Application, Profile, ai, upload, fs, runScraper, sendDailyD
             const companyDir = sanitize(job.company);
             const jobTitleDir = sanitize(job.title);
             const jobDir = path.join(__dirname, '..', 'documents', 'job-description', companyDir, jobTitleDir);
-            
+
             // Ensure directory exists
             if (!fs.existsSync(jobDir)) {
                 fs.mkdirSync(jobDir, { recursive: true });
