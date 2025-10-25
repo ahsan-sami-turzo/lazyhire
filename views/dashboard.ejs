@@ -1,0 +1,40 @@
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">Welcome back, <%= user %>!</h1>
+        <p class="lead">You are currently tracking **<%= jobCount %>** jobs.</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <h2 class="mt-4">Active Jobs</h2>
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Company</th>
+                    <th>Location</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% jobs.forEach(job => { %>
+                    <tr>
+                        <td><%= job.title %></td>
+                        <td><%= job.company %></td>
+                        <td><%= job.location %></td>
+                        <td><span class="badge bg-primary"><%= job.status %></span></td>
+                        <td>
+                            <a href="#" class="btn btn-sm btn-info">View</a>
+                        </td>
+                    </tr>
+                <% }) %>
+                
+                <% if (jobs.length === 0) { %>
+                    <tr><td colspan="5" class="text-center">No jobs found. Run the scraper!</td></tr>
+                <% } %>
+            </tbody>
+        </table>
+    </div>
+</div>
