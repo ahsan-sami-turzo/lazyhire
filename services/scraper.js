@@ -11,27 +11,19 @@ function scrapeJobs() {
     // Simulate complex scraping and parsing
     const newJobs = [
         {
-            title: 'Frontend Engineer (React/Vue)',
-            company: 'Zenith Systems',
-            location: 'Remote (US/EU)',
+            title: 'Frontend Engineer',
+            company: 'Visma Oy',
+            location: 'Finland (Remote)',
             status: 'New', // Default status for scraped jobs
             notes: 'High priority match due to React/Vue experience.',
             date_applied: new Date().toISOString().split('T')[0]
         },
         {
             title: 'Node.js Backend Developer',
-            company: 'Global Fintech',
-            location: 'New York, NY',
-            status: 'New',
+            company: 'ABB Oy',
+            location: 'Tampere, Finland',
+            status: 'New', // Default status for scraped jobs
             notes: 'Strong Express and SQLite knowledge required.',
-            date_applied: new Date().toISOString().split('T')[0]
-        },
-        {
-            title: 'DevOps Specialist',
-            company: 'CloudWorks',
-            location: 'Austin, TX',
-            status: 'New',
-            notes: 'Requires Windows/Linux dev experience.',
             date_applied: new Date().toISOString().split('T')[0]
         }
     ];

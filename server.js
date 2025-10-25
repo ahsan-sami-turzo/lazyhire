@@ -2,9 +2,12 @@ const express = require('express');
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
 const expressLayouts = require('express-ejs-layouts');
+const cron = require('node-cron');
+const { runScraper } = require('./services/scraper-runner');
 
 const app = express();
 const port = 3000;
+
 
 // --- Express Middleware ---
 app.use(express.urlencoded({ extended: true })); // Handle standard HTML forms
@@ -108,6 +111,27 @@ app.post('/update/:id', (req, res) => {
         }
         res.redirect('/');
     });
+});
+
+// Manual Scraper Trigger
+app.post('/api/scrape', (req, res) => {
+    console.log('Manual scraper triggered by user...');
+    
+    // Send immediate response to avoid browser timeout, then run the scraper asynchronously
+    res.json({ message: 'Scraping started. Results will appear shortly.' });
+
+    runScraper()
+        .then(count => console.log(`Manual scrape successful. Inserted ${count} jobs.`))
+        .catch(err => console.error('Manual scrape failed:', err.message));
+});
+
+
+// --- AUTOMATION: CRON JOB SCHEDULER ---
+cron.schedule('0 0 * * *', () => {
+    console.log('Scheduled daily job scraper...');
+    runScraper(false) // Run silently (false for logToConsole)
+        .then(count => console.log(`✅ Scheduled scrape finished. Inserted ${count} jobs.`))
+        .catch(err => console.error('❌ Scheduled scrape failed:', err.message));
 });
 
 // Server Start
