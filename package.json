@@ -19,6 +19,7 @@
     "express-ejs-layouts": "^2.5.1",
     "multer": "^2.0.2",
     "node-cron": "^4.2.1",
+    "nodemailer": "^7.0.10",
     "openai": "^6.7.0",
     "sqlite3": "^5.1.7"
   }

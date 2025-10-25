@@ -1,40 +1,40 @@
+// server.js
+
+// --- Core Imports ---
 require('dotenv').config();
-const { OpenAI } = require('openai');
-const { GoogleGenAI } = require('@google/genai');
-const multer = require('multer'); 
 const express = require('express');
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
 const expressLayouts = require('express-ejs-layouts');
 const cron = require('node-cron');
+
+// --- Service/Utility Imports (Required for initialization/cron) ---
+const { GoogleGenAI } = require('@google/genai');
+const multer = require('multer'); 
 const { runScraper } = require('./services/scraper-runner');
+const { sendDailyDigest } = require('./services/mailer');
+const applicationsRouter = require('./routes/index'); // <-- NEW ROUTER IMPORT
 
 // --- App Setup ---
 const app = express();
 const port = 3000;
 
-// --- AI Setup ---
-// OpenAI
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
-// Gemini (Google GenAI)
+// --- Global Utility Initialization ---
 const ai = new GoogleGenAI({
     apiKey: process.env.GEMINI_API_KEY,
 });
-
-// --- File Upload Setup (Multer) ---
 const upload = multer({ dest: path.join(__dirname, 'uploads/') });
+const fs = require('fs'); // Used by multer in the router
 
 // --- Express Middleware ---
-app.use(express.urlencoded({ extended: true })); // Handle standard HTML forms
-app.use(express.json()); // Handle JSON data
+app.use(express.urlencoded({ extended: true })); 
+app.use(express.json()); 
 
 // --- EJS Setup ---
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
-app.use(expressLayouts); // Enable EJS layouts
-app.set('layout', 'layout'); // Set 'layout.ejs' as the default layout
+app.use(expressLayouts); 
+app.set('layout', 'layout'); 
 
 // --- Serve static files ---
 app.use(express.static(path.join(__dirname, 'public')));
@@ -46,8 +46,8 @@ const db = new sqlite3.Database(dbPath, (err) => {
         console.error('Database connection error:', err.message);
     } else {
         console.log('Connected to the SQLite database.');
-        
-        // --- Jobs Table Creation (New/Updated Table) ---
+
+        // 1. Ensure the 'jobs' placeholder table is created correctly
         db.run(`CREATE TABLE IF NOT EXISTS jobs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT,
@@ -56,10 +56,12 @@ const db = new sqlite3.Database(dbPath, (err) => {
             salary TEXT,
             date_posted TEXT,
             description TEXT
-        )`);
-        console.log('Jobs table ensured.');
-
-        // --- Job Applications Table Creation (New/Updated Table) ---
+        )`, (runErr) => {
+            if (runErr) console.error('Error creating jobs table:', runErr.message);
+            else console.log('Jobs table ensured.');
+        });
+        
+        // 2. Ensure the main 'applications' table is created correctly
         db.run(`CREATE TABLE IF NOT EXISTS applications (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
@@ -68,302 +70,39 @@ const db = new sqlite3.Database(dbPath, (err) => {
             status TEXT DEFAULT 'New',
             notes TEXT,
             date_applied TEXT
-        )`);
-        console.log('Applications table ensured.');
-    }
-});
-
-
-
-// --- Routes ---
-// GET: Dashboard / List all Applications
-app.get('/', (req, res) => {
-    // Fetch all applications from the DB
-    db.all('SELECT * FROM applications ORDER BY id DESC', [], (err, jobs) => {
-        if (err) {
-            return res.status(500).send("Database Error: " + err.message);
-        }
-        res.render('dashboard', { 
-            pageTitle: 'Application Dashboard',
-            jobs: jobs,
-            user: 'SoloDev',
-            jobCount: jobs.length
-        });
-    });
-});
-
-// GET: Form to add a new application
-app.get('/add', (req, res) => {
-    res.render('add-application', { 
-        pageTitle: 'Add New Application',
-        user: 'SoloDev'
-    });
-});
-
-// POST: Handle form submission to add new application (CREATE)
-app.post('/add', (req, res) => {
-    const { title, company, location, notes, date_applied } = req.body;
-    const sql = `INSERT INTO applications (title, company, location, notes, date_applied) VALUES (?, ?, ?, ?, ?)`;
-    
-    db.run(sql, [title, company, location, notes, date_applied], function(err) {
-        if (err) {
-            console.error(err.message);
-            return res.status(500).send('Error adding application.');
-        }
-        console.log(`A new application has been added with ID ${this.lastID}`);
-        res.redirect('/'); // Redirect back to the dashboard list
-    });
-});
-
-// POST: Update application status (UPDATE)
-app.post('/update/:id', (req, res) => {
-    const { status } = req.body;
-    const id = req.params.id;
-    const sql = `UPDATE applications SET status = ? WHERE id = ?`;
-
-    db.run(sql, [status, id], function(err) {
-        if (err) {
-            console.error(err.message);
-            return res.status(500).send('Error updating status.');
-        }
-        res.redirect('/');
-    });
-});
-
-
-// =========================================================
-// RESUME TAILORING
-// =========================================================
-
-// GET: Resume Tailor Form
-app.get('/tailor', (req, res) => {
-    res.render('resume-tailor', { 
-        pageTitle: 'AI Resume Tailor',
-        user: 'SoloDev',
-        tailoredResume: null,
-        error: null
-    });
-});
-
-// POST: Handle Tailoring Request
-// Use upload.single() middleware to handle one file upload ('resumeFile')
-app.post('/tailor', upload.single('resumeFile'), async (req, res) => {
-    const { jobDescription } = req.body;
-    const filePath = req.file ? req.file.path : null;
-
-    if (!filePath) {
-        return res.render('resume-tailor', { pageTitle: 'AI Resume Tailor', user: 'SoloDev', error: 'Please upload a resume file.' });
-    }
-
-    try {
-        // --- 1. Read Resume Content ---
-        const fs = require('fs');
-        const baseResume = fs.readFileSync(filePath, 'utf8');
-
-        // --- 2. Construct AI Prompt ---
-        const prompt = `You are an expert resume writer. Tailor the following base resume to strongly match the provided job description. Focus on maximizing keyword relevance while maintaining professional integrity. Only return the modified resume text.
-        
-        --- JOB DESCRIPTION ---
-        ${jobDescription}
-        
-        --- BASE RESUME ---
-        ${baseResume}`;
-
-        // --- 3. Call OpenAI API ---
-        // const completion = await openai.chat.completions.create({
-        //     model: "gpt-3.5-turbo", // Fast and capable model for text transformation
-        //     messages: [{ role: "user", content: prompt }],
-        //     temperature: 0.2, // Keep creativity low for factual tailoring
-        // });
-        
-        // Extract the text content from the OpenAI response
-        // const tailoredResume = completion.choices[0].message.content.trim();
-
-        // --- 3. Call Gemini API (Updated) ---
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash", // Fast and capable model for text transformation
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            config: {
-                // Ensure deterministic output for tailoring
-                temperature: 0.2, 
-            },
-        });
-        
-        // Extract the text content from the Gemini response
-        const tailoredResume = response.text.trim();
-
-        // --- 4. Clean Up Temporary File ---
-        fs.unlinkSync(filePath);
-
-        // --- 5. Render Result ---
-        res.render('resume-tailor', { 
-            pageTitle: 'AI Resume Tailor',
-            user: 'SoloDev',
-            tailoredResume: tailoredResume,
-            error: null
-        });
-
-    } catch (error) {
-        console.error('OpenAI or File System Error:', error);
-        if (req.file) { // Attempt to clean up even on error
-            try {
-                fs.unlinkSync(filePath);
-            } catch (cleanupError) {
-                console.error("Failed to clean up file:", cleanupError);
-            }
-        }
-        res.render('resume-tailor', { 
-            pageTitle: 'AI Resume Tailor', 
-            user: 'turzo', 
-            tailoredResume: null, 
-            error: 'An error occurred during AI processing. Check API key and console logs.' 
+        )`, (runErr) => {
+            if (runErr) console.error('Error creating applications table:', runErr.message);
+            else console.log('Applications table ensured.');
         });
     }
 });
 
-
 // =========================================================
-// COVER LETTER GENERATION
-// =========================================================
-
-// GET: Cover Letter Form
-app.get('/cover-letter', (req, res) => {
-    res.render('cover-letter-generator', {
-        pageTitle: 'AI Cover Letter Generator',
-        user: 'SoloDev',
-        generatedText: null,
-        error: null
-    });
-});
-
-// POST: Handle Cover Letter Generation Request
-app.post('/cover-letter', express.urlencoded({ extended: true }), async (req, res) => {
-    const { jobDescription, yourProfileSummary } = req.body;
-
-    try {
-        const prompt = `You are a professional hiring manager. Write a concise, compelling cover letter (around 3-4 paragraphs) for a candidate applying to the job described below.
-        
-        --- JOB DESCRIPTION ---
-        ${jobDescription}
-        
-        --- CANDIDATE PROFILE SUMMARY ---
-        ${yourProfileSummary}
-        
-        Ensure the letter highlights skills from the profile that match the job requirements. Return only the text of the cover letter.`;
-
-        // Call Gemini API
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            config: {
-                temperature: 0.5, // Slightly higher creativity for persuasive writing
-            },
-        });
-
-        const generatedText = response.text.trim();
-
-        res.render('cover-letter-generator', {
-            pageTitle: 'AI Cover Letter Generator',
-            user: 'SoloDev',
-            generatedText: generatedText,
-            error: null
-        });
-
-    } catch (error) {
-        console.error('Gemini API Error (Cover Letter):', error);
-        res.render('cover-letter-generator', {
-            pageTitle: 'AI Cover Letter Generator',
-            user: 'SoloDev',
-            generatedText: null,
-            error: `An error occurred during API processing. Error: ${error.message}`
-        });
-    }
-});
-
-
-// =========================================================
-// INTERVIEW PREP ASSISTANT
+// 🔄 AUTOMATION: CRON JOB SCHEDULER
 // =========================================================
 
-// GET: Interview Prep Form
-app.get('/interview-prep', (req, res) => {
-    res.render('interview-prep', {
-        pageTitle: 'AI Interview Prep',
-        user: 'SoloDev',
-        generatedText: null,
-        error: null
-    });
-});
-
-// POST: Handle Interview Prep Request
-app.post('/interview-prep', express.urlencoded({ extended: true }), async (req, res) => {
-    const { jobDescription, resumeSummary } = req.body;
-
-    try {
-        const prompt = `You are an expert interview coach. Analyze the following job description and candidate resume summary. Generate a list of 5 most likely technical and behavioral interview questions tailored to this specific role. Also, provide a brief, bulleted suggested answer outline for each question, based on the candidate's summary.
-        
-        --- JOB DESCRIPTION ---
-        ${jobDescription}
-
-        --- CANDIDATE RESUME SUMMARY/HIGHLIGHTS ---
-        ${resumeSummary}
-        
-        Format the output clearly with questions and suggested answers.`;
-
-        // Call Gemini API
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            config: {
-                temperature: 0.1, // Keep creativity low for reliable questions
-            },
-        });
-
-        const generatedText = response.text.trim();
-
-        res.render('interview-prep', {
-            pageTitle: 'AI Interview Prep',
-            user: 'SoloDev',
-            generatedText: generatedText,
-            error: null
-        });
-
-    } catch (error) {
-        console.error('Gemini API Error (Interview Prep):', error);
-        res.render('interview-prep', {
-            pageTitle: 'AI Interview Prep',
-            user: 'SoloDev',
-            generatedText: null,
-            error: `An error occurred during API processing. Error: ${error.message}`
-        });
-    }
-});
-
-
-// =========================================================
-// 📄 SCRAPER
-// =========================================================
-
-// Manual Scraper Trigger
-app.post('/api/scrape', (req, res) => {
-    console.log('Manual scraper triggered by user...');
-    
-    // Send immediate response to avoid browser timeout, then run the scraper asynchronously
-    res.json({ message: 'Scraping started. Results will appear shortly.' });
-
-    runScraper()
-        .then(count => console.log(`Manual scrape successful. Inserted ${count} jobs.`))
-        .catch(err => console.error('Manual scrape failed:', err.message));
-});
-
-
-// --- AUTOMATION: CRON JOB SCHEDULER ---
+// Schedule the scraper to run every day at 00:01
 cron.schedule('0 0 * * *', () => {
     console.log('Scheduled daily job scraper...');
-    runScraper(false) // Run silently (false for logToConsole)
-        .then(count => console.log(`✅ Scheduled scrape finished. Inserted ${count} jobs.`))
-        .catch(err => console.error('❌ Scheduled scrape failed:', err.message));
+    runScraper(false)
+        .then(newJobs => {
+            console.log(`✅ Scheduled scrape finished. Inserted ${newJobs.length} jobs.`);
+            if (newJobs.length > 0) {
+                return sendDailyDigest(newJobs);
+            }
+            return Promise.resolve();
+        })
+        .catch(err => console.error('❌ Scheduled automation failed:', err.message));
 });
+console.log('Cron job for daily scraping and digest email scheduled (Midnight).');
+
+// =========================================================
+// 🚀 ROUTE HANDLER (Mount all routes here)
+// =========================================================
+
+// Pass utilities/dependencies needed by the routes
+app.use('/', applicationsRouter({ db, ai, upload, fs, runScraper, sendDailyDigest })); 
+
 
 // Server Start
 app.listen(port, () => {

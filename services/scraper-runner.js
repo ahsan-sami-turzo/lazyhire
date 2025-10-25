@@ -10,7 +10,7 @@ const dbPath = path.join(__dirname, '..', 'db', 'lazyhire.sqlite');
 /**
  * Executes the scraping process and inserts new jobs into the database.
  * @param {boolean} logToConsole - Flag to enable console logging.
- * @returns {Promise<number>} - Resolves with the number of jobs inserted.
+ * @returns {Promise<Array<Object>>} - Resolves with the list of jobs inserted.  // <-- MODIFIED RETURN TYPE
  */
 function runScraper(logToConsole = true) {
     return new Promise((resolve, reject) => {
@@ -61,7 +61,8 @@ function runScraper(logToConsole = true) {
                             return reject(commitErr);
                         }
                         if (logToConsole) console.log(`\n✅ Finished job insertion. Total jobs inserted: ${insertedCount}`);
-                        resolve(insertedCount);
+                        // resolve(insertedCount);
+                        resolve(newJobs); // <-- RETURN THE LIST OF NEW JOBS
                     });
                 });
             });
