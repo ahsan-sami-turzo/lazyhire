@@ -1,0 +1,51 @@
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <h1 class="mb-4">AI Interview Prep Assistant 🧠</h1>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Generate Questions & Answers</h5>
+                
+                <% if (error) { %>
+                    <div class="alert alert-danger"><%= error %></div>
+                <% } %>
+
+                <form action="/interview-prep" method="POST">
+                    
+                    <div class="mb-3">
+                        <label for="jobDescription" class="form-label">Job Description</label>
+                        <textarea class="form-control" id="jobDescription" name="jobDescription" rows="6" required placeholder="Paste the full job description..."></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="resumeSummary" class="form-label">Tailored Resume Summary / Highlights</label>
+                        <textarea class="form-control" id="resumeSummary" name="resumeSummary" rows="4" required placeholder="Paste the top 5-10 bullet points from your tailored resume or key achievements..."></textarea>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">🔥 Generate Prep Material</button>
+                </form>
+            </div>
+        </div>
+
+        <% if (generatedText) { %>
+            <div class="card mt-5 shadow">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">✅ Interview Questions & Suggested Answers</h5>
+                </div>
+                <div class="card-body">
+                    <pre style="white-space: pre-wrap; word-wrap: break-word; background-color: #f4f4f4; padding: 15px; border-radius: 5px;"><%= generatedText %></pre>
+                    <button class="btn btn-sm btn-outline-secondary mt-3" onclick="copyText()">Copy to Clipboard</button>
+                </div>
+            </div>
+            <script>
+                function copyText() {
+                    const text = document.querySelector('pre').innerText;
+                    navigator.clipboard.writeText(text)
+                        .then(() => alert('Interview prep material copied!'))
+                        .catch(err => console.error('Could not copy text: ', err));
+                }
+            </script>
+        <% } %>
+
+    </div>
+</div>

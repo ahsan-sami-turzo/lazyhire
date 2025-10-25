@@ -1,0 +1,51 @@
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <h1 class="mb-4">AI Cover Letter Generator ✉️</h1>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Generate Personalized Letter</h5>
+                
+                <% if (error) { %>
+                    <div class="alert alert-danger"><%= error %></div>
+                <% } %>
+
+                <form action="/cover-letter" method="POST">
+                    
+                    <div class="mb-3">
+                        <label for="jobDescription" class="form-label">Job Description</label>
+                        <textarea class="form-control" id="jobDescription" name="jobDescription" rows="6" required placeholder="Paste the full job description..."></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="yourProfileSummary" class="form-label">Your Profile Summary / Key Skills</label>
+                        <textarea class="form-control" id="yourProfileSummary" name="yourProfileSummary" rows="4" required placeholder="E.g., 5 years experience with Node.js and Express, expert in EJS and SQLite, adept in React/Vue..."></textarea>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">✍️ Generate Cover Letter</button>
+                </form>
+            </div>
+        </div>
+
+        <% if (generatedText) { %>
+            <div class="card mt-5 shadow">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">✅ Generated Cover Letter</h5>
+                </div>
+                <div class="card-body">
+                    <pre style="white-space: pre-wrap; word-wrap: break-word; background-color: #f4f4f4; padding: 15px; border-radius: 5px;"><%= generatedText %></pre>
+                    <button class="btn btn-sm btn-outline-secondary mt-3" onclick="copyText()">Copy to Clipboard</button>
+                </div>
+            </div>
+            <script>
+                function copyText() {
+                    const text = document.querySelector('pre').innerText;
+                    navigator.clipboard.writeText(text)
+                        .then(() => alert('Cover letter copied!'))
+                        .catch(err => console.error('Could not copy text: ', err));
+                }
+            </script>
+        <% } %>
+
+    </div>
+</div>

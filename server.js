@@ -223,6 +223,124 @@ app.post('/tailor', upload.single('resumeFile'), async (req, res) => {
 
 
 // =========================================================
+// COVER LETTER GENERATION
+// =========================================================
+
+// GET: Cover Letter Form
+app.get('/cover-letter', (req, res) => {
+    res.render('cover-letter-generator', {
+        pageTitle: 'AI Cover Letter Generator',
+        user: 'SoloDev',
+        generatedText: null,
+        error: null
+    });
+});
+
+// POST: Handle Cover Letter Generation Request
+app.post('/cover-letter', express.urlencoded({ extended: true }), async (req, res) => {
+    const { jobDescription, yourProfileSummary } = req.body;
+
+    try {
+        const prompt = `You are a professional hiring manager. Write a concise, compelling cover letter (around 3-4 paragraphs) for a candidate applying to the job described below.
+        
+        --- JOB DESCRIPTION ---
+        ${jobDescription}
+        
+        --- CANDIDATE PROFILE SUMMARY ---
+        ${yourProfileSummary}
+        
+        Ensure the letter highlights skills from the profile that match the job requirements. Return only the text of the cover letter.`;
+
+        // Call Gemini API
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            config: {
+                temperature: 0.5, // Slightly higher creativity for persuasive writing
+            },
+        });
+
+        const generatedText = response.text.trim();
+
+        res.render('cover-letter-generator', {
+            pageTitle: 'AI Cover Letter Generator',
+            user: 'SoloDev',
+            generatedText: generatedText,
+            error: null
+        });
+
+    } catch (error) {
+        console.error('Gemini API Error (Cover Letter):', error);
+        res.render('cover-letter-generator', {
+            pageTitle: 'AI Cover Letter Generator',
+            user: 'SoloDev',
+            generatedText: null,
+            error: `An error occurred during API processing. Error: ${error.message}`
+        });
+    }
+});
+
+
+// =========================================================
+// INTERVIEW PREP ASSISTANT
+// =========================================================
+
+// GET: Interview Prep Form
+app.get('/interview-prep', (req, res) => {
+    res.render('interview-prep', {
+        pageTitle: 'AI Interview Prep',
+        user: 'SoloDev',
+        generatedText: null,
+        error: null
+    });
+});
+
+// POST: Handle Interview Prep Request
+app.post('/interview-prep', express.urlencoded({ extended: true }), async (req, res) => {
+    const { jobDescription, resumeSummary } = req.body;
+
+    try {
+        const prompt = `You are an expert interview coach. Analyze the following job description and candidate resume summary. Generate a list of 5 most likely technical and behavioral interview questions tailored to this specific role. Also, provide a brief, bulleted suggested answer outline for each question, based on the candidate's summary.
+        
+        --- JOB DESCRIPTION ---
+        ${jobDescription}
+
+        --- CANDIDATE RESUME SUMMARY/HIGHLIGHTS ---
+        ${resumeSummary}
+        
+        Format the output clearly with questions and suggested answers.`;
+
+        // Call Gemini API
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            config: {
+                temperature: 0.1, // Keep creativity low for reliable questions
+            },
+        });
+
+        const generatedText = response.text.trim();
+
+        res.render('interview-prep', {
+            pageTitle: 'AI Interview Prep',
+            user: 'SoloDev',
+            generatedText: generatedText,
+            error: null
+        });
+
+    } catch (error) {
+        console.error('Gemini API Error (Interview Prep):', error);
+        res.render('interview-prep', {
+            pageTitle: 'AI Interview Prep',
+            user: 'SoloDev',
+            generatedText: null,
+            error: `An error occurred during API processing. Error: ${error.message}`
+        });
+    }
+});
+
+
+// =========================================================
 // 📄 SCRAPER
 // =========================================================
 
