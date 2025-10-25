@@ -1,0 +1,53 @@
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <h1 class="mb-4">AI Resume Tailor 🤖</h1>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Tailor Your Resume</h5>
+                <p class="card-text text-muted">Paste a job description and upload your base resume. The AI will modify your resume to match the job's keywords.</p>
+                
+                <% if (error) { %>
+                    <div class="alert alert-danger"><%= error %></div>
+                <% } %>
+
+                <form action="/tailor" method="POST" enctype="multipart/form-data">
+                    
+                    <div class="mb-3">
+                        <label for="jobDescription" class="form-label">Job Description</label>
+                        <textarea class="form-control" id="jobDescription" name="jobDescription" rows="8" required placeholder="Paste the full text of the job description here..."></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="resumeFile" class="form-label">Upload Base Resume (Plain Text or Markdown recommended)</label>
+                        <input class="form-control" type="file" id="resumeFile" name="resumeFile" accept=".txt,.md" required>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">✨ Generate Tailored Resume</button>
+                </form>
+            </div>
+        </div>
+
+        <% if (tailoredResume) { %>
+            <div class="card mt-5 shadow">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">✅ Tailored Resume Result</h5>
+                </div>
+                <div class="card-body">
+                    <pre style="white-space: pre-wrap; word-wrap: break-word; background-color: #f4f4f4; padding: 15px; border-radius: 5px;"><%= tailoredResume %></pre>
+                    
+                    <button class="btn btn-sm btn-outline-secondary mt-3" onclick="copyResume()">Copy to Clipboard</button>
+                    </div>
+            </div>
+            <script>
+                function copyResume() {
+                    const resumeText = document.querySelector('pre').innerText;
+                    navigator.clipboard.writeText(resumeText)
+                        .then(() => alert('Tailored resume copied to clipboard!'))
+                        .catch(err => console.error('Could not copy text: ', err));
+                }
+            </script>
+        <% } %>
+
+    </div>
+</div>

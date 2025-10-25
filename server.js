@@ -1,3 +1,7 @@
+require('dotenv').config();
+const { OpenAI } = require('openai');
+const { GoogleGenAI } = require('@google/genai');
+const multer = require('multer'); 
 const express = require('express');
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
@@ -5,9 +9,22 @@ const expressLayouts = require('express-ejs-layouts');
 const cron = require('node-cron');
 const { runScraper } = require('./services/scraper-runner');
 
+// --- App Setup ---
 const app = express();
 const port = 3000;
 
+// --- AI Setup ---
+// OpenAI
+const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+});
+// Gemini (Google GenAI)
+const ai = new GoogleGenAI({
+    apiKey: process.env.GEMINI_API_KEY,
+});
+
+// --- File Upload Setup (Multer) ---
+const upload = multer({ dest: path.join(__dirname, 'uploads/') });
 
 // --- Express Middleware ---
 app.use(express.urlencoded({ extended: true })); // Handle standard HTML forms
@@ -112,6 +129,102 @@ app.post('/update/:id', (req, res) => {
         res.redirect('/');
     });
 });
+
+
+// =========================================================
+// RESUME TAILORING
+// =========================================================
+
+// GET: Resume Tailor Form
+app.get('/tailor', (req, res) => {
+    res.render('resume-tailor', { 
+        pageTitle: 'AI Resume Tailor',
+        user: 'SoloDev',
+        tailoredResume: null,
+        error: null
+    });
+});
+
+// POST: Handle Tailoring Request
+// Use upload.single() middleware to handle one file upload ('resumeFile')
+app.post('/tailor', upload.single('resumeFile'), async (req, res) => {
+    const { jobDescription } = req.body;
+    const filePath = req.file ? req.file.path : null;
+
+    if (!filePath) {
+        return res.render('resume-tailor', { pageTitle: 'AI Resume Tailor', user: 'SoloDev', error: 'Please upload a resume file.' });
+    }
+
+    try {
+        // --- 1. Read Resume Content ---
+        const fs = require('fs');
+        const baseResume = fs.readFileSync(filePath, 'utf8');
+
+        // --- 2. Construct AI Prompt ---
+        const prompt = `You are an expert resume writer. Tailor the following base resume to strongly match the provided job description. Focus on maximizing keyword relevance while maintaining professional integrity. Only return the modified resume text.
+        
+        --- JOB DESCRIPTION ---
+        ${jobDescription}
+        
+        --- BASE RESUME ---
+        ${baseResume}`;
+
+        // --- 3. Call OpenAI API ---
+        // const completion = await openai.chat.completions.create({
+        //     model: "gpt-3.5-turbo", // Fast and capable model for text transformation
+        //     messages: [{ role: "user", content: prompt }],
+        //     temperature: 0.2, // Keep creativity low for factual tailoring
+        // });
+        
+        // Extract the text content from the OpenAI response
+        // const tailoredResume = completion.choices[0].message.content.trim();
+
+        // --- 3. Call Gemini API (Updated) ---
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash", // Fast and capable model for text transformation
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            config: {
+                // Ensure deterministic output for tailoring
+                temperature: 0.2, 
+            },
+        });
+        
+        // Extract the text content from the Gemini response
+        const tailoredResume = response.text.trim();
+
+        // --- 4. Clean Up Temporary File ---
+        fs.unlinkSync(filePath);
+
+        // --- 5. Render Result ---
+        res.render('resume-tailor', { 
+            pageTitle: 'AI Resume Tailor',
+            user: 'SoloDev',
+            tailoredResume: tailoredResume,
+            error: null
+        });
+
+    } catch (error) {
+        console.error('OpenAI or File System Error:', error);
+        if (req.file) { // Attempt to clean up even on error
+            try {
+                fs.unlinkSync(filePath);
+            } catch (cleanupError) {
+                console.error("Failed to clean up file:", cleanupError);
+            }
+        }
+        res.render('resume-tailor', { 
+            pageTitle: 'AI Resume Tailor', 
+            user: 'turzo', 
+            tailoredResume: null, 
+            error: 'An error occurred during AI processing. Check API key and console logs.' 
+        });
+    }
+});
+
+
+// =========================================================
+// 📄 SCRAPER
+// =========================================================
 
 // Manual Scraper Trigger
 app.post('/api/scrape', (req, res) => {
