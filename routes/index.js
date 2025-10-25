@@ -2,16 +2,44 @@
 
 const express = require('express');
 
+const sanitize = (name) => name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+
 // Export a function that accepts dependencies
-module.exports = ({ Application, ai, upload, fs, runScraper, sendDailyDigest }) => {
+module.exports = ({ Application, Profile, ai, upload, fs, runScraper, sendDailyDigest }) => {
     const router = express.Router();
     
     // Helper function used in dashboard route
     const getAllStatuses = () => ['New', 'Applied', 'Interview Scheduled', 'Rejected', 'Offer'];
 
+    // -----------------------------------------------------------------
+    // --- AUTHENTICATION ---
+    // -----------------------------------------------------------------
+    router.get('/login', (req, res) => {
+        // Bypass requireLogin check if this route is hit
+        if (req.session.isAuthenticated) return res.redirect('/');
+        res.render('login', { layout: 'login-layout', error: null });
+    });
+
+    router.post('/login', (req, res) => {
+        const { username, password } = req.body;
+        // 1. Simple .env based authentication check
+        if (username === process.env.LOGIN_USERNAME && password === process.env.LOGIN_PASSWORD) {
+            req.session.isAuthenticated = true;
+            req.session.username = username;
+            return res.redirect('/');
+        }
+        res.render('login', { layout: 'login-layout', error: 'Invalid username or password' });
+    });
+
+    router.post('/logout', (req, res) => {
+        req.session.destroy(err => {
+            if (err) console.error(err);
+            res.redirect('/login');
+        });
+    });
 
     // -----------------------------------------------------------------
-    // 🏠 DASHBOARD / APPLICATION TRACKER ROUTES (FIXED CRUD)
+    // 🏠 DASHBOARD / APPLICATION TRACKER ROUTES
     // -----------------------------------------------------------------
 
     // GET: Dashboard / List all Applications
@@ -37,7 +65,7 @@ module.exports = ({ Application, ai, upload, fs, runScraper, sendDailyDigest }) 
             res.render('dashboard', { 
                 pageTitle: 'Application Dashboard',
                 jobs: jobs,
-                user: 'SoloDev',
+                user: req.session.username,
                 jobCount: jobs.length,
                 statusCounts: finalStatusCounts,
             });
@@ -183,6 +211,236 @@ module.exports = ({ Application, ai, upload, fs, runScraper, sendDailyDigest }) 
         res.json({ status: 'info', message: 'Autofill feature is active but currently simulated.' });
     });
 
+
+    // -----------------------------------------------------------------
+    // ⚙️ PROFILE ROUTES
+    // -----------------------------------------------------------------
+    const initialProfileData = {
+        full_name: "Solo Developer",
+        job_title: "Full Stack Developer",
+        contact_email: "solo.dev@example.com",
+        phone: "123-456-7890",
+        summary: "Expert in Node.js, Express, EJS, and database systems (Sequelize/SQLite). Dedicated to building efficient, full-featured web applications.",
+        experience: [{ title: "Lead Dev", company: "LazyHire Inc.", duration: "2023-Present" }],
+        education: [{ degree: "MSc Computer Science", institution: "Tech University" }],
+        skills: ["Node.js", "Sequelize", "Gemini API", "HTML/CSS", "JavaScript"],
+    };
+
+    router.get('/profile', async (req, res) => {
+        try {
+            let profile = await Profile.findByPk(1, { raw: true });
+
+            if (!profile) {
+                // Create initial data if not found (simulating first login/CV import)
+                profile = await Profile.create({ 
+                    id: 1, 
+                    full_name: req.session.username, 
+                    ...initialProfileData 
+                }, { raw: true });
+            }
+            
+            // Ensure complex fields are parsed for the view if they are stored as strings
+            if (typeof profile.skills === 'string') {
+                profile.skills = JSON.parse(profile.skills);
+            }
+
+            res.render('profile', { pageTitle: 'My Profile', user: req.session.username, profile: profile });
+        } catch (error) {
+            console.error('Profile Load Error:', error);
+            res.status(500).send('Could not load profile.');
+        }
+    });
+
+    router.post('/profile', async (req, res) => {
+        // Data cleansing needed here (e.g., converting array/tag inputs back to JSON string if necessary)
+        try {
+            const updateData = {
+                ...req.body,
+                // Convert skills back to JSON string for database storage
+                skills: JSON.stringify(req.body.skills ? req.body.skills.split(',').map(s => s.trim()) : []),
+                // Assume other complex fields are handled client-side or omitted for simplicity
+            };
+
+            await Profile.update(updateData, { where: { id: 1 } });
+            res.redirect('/profile?saved=true');
+        } catch (error) {
+            console.error('Profile Save Error:', error);
+            res.status(500).send('Could not save profile.');
+        }
+    });
+
+    // POST: Create CV template file (Step 4)
+    router.post('/profile/create-cv', async (req, res) => {
+        try {
+            const profile = await Profile.findByPk(1, { raw: true });
+            
+            const cvContent = `
+                # ${profile.full_name}
+                ${profile.job_title} | ${profile.contact_email} | ${profile.phone} | ${profile.linkedin_url || ''}
+
+                ## Summary
+                ${profile.summary}
+
+                ## Skills
+                ${(profile.skills ? JSON.parse(profile.skills) : []).map(s => `- ${s}`).join('\n')}
+
+                ## Experience
+                ${JSON.stringify(profile.experience, null, 2)}
+
+                ## Education
+                ${JSON.stringify(profile.education, null, 2)}
+            `;
+            
+            const dir = path.join(__dirname, '..', 'documents');
+            if (!fs.existsSync(dir)) fs.mkdirSync(dir);
+            
+            const filePath = path.join(dir, 'base_template_cv.md');
+            fs.writeFileSync(filePath, cvContent);
+
+            res.redirect('/profile?cv_created=true');
+
+        } catch (error) {
+            console.error('CV Creation Error:', error);
+            res.status(500).send('Failed to create CV template.');
+        }
+    });
+
+
+    // -----------------------------------------------------------------
+    // JOB DETAILS ROUTES
+    // -----------------------------------------------------------------
+
+    // --- Job Details Page  ---
+    router.get('/details/:id', async (req, res) => {
+        const id = req.params.id;
+        try {
+            const job = await Application.findByPk(id, { raw: true });
+            if (!job) return res.status(404).send('Job not found.');
+            
+            // --- Step 8: Create Directory and Copy CV Template ---
+            const companyDir = sanitize(job.company);
+            const jobTitleDir = sanitize(job.title);
+            const jobDir = path.join(__dirname, '..', 'documents', 'job-description', companyDir, jobTitleDir);
+            
+            // Ensure directory exists
+            if (!fs.existsSync(jobDir)) {
+                fs.mkdirSync(jobDir, { recursive: true });
+            }
+
+            // Copy latest base template CV
+            const baseCvPath = path.join(__dirname, '..', 'documents', 'base_template_cv.md');
+            const targetCvPath = path.join(jobDir, 'base_cv_copy.md');
+            
+            if (fs.existsSync(baseCvPath) && !fs.existsSync(targetCvPath)) {
+                fs.copyFileSync(baseCvPath, targetCvPath);
+            }
+            
+            // Render details page
+            res.render('job-details', { 
+                pageTitle: `Details: ${job.title}`, 
+                user: req.session.username, 
+                job: job, 
+                jobDir: jobDir 
+            });
+
+        } catch (error) {
+            console.error('Job Details Error:', error);
+            res.status(500).send('Error loading job details or file system.');
+        }
+    });
+
+    // --- Actions from Job Details Page  ---
+
+    // 1. Delete Job
+    router.post('/details/delete/:id', async (req, res) => {
+        const id = req.params.id;
+        try {
+            const job = await Application.findByPk(id, { raw: true });
+            if (!job) return res.redirect('/');
+            
+            // 1. Delete associated directory
+            const companyDir = sanitize(job.company);
+            const jobTitleDir = sanitize(job.title);
+            const jobDir = path.join(__dirname, '..', 'documents', 'job-description', companyDir, jobTitleDir);
+            if (fs.existsSync(jobDir)) {
+                fs.rmSync(jobDir, { recursive: true, force: true });
+            }
+            
+            // 2. Delete database entry
+            await Application.destroy({ where: { id: id } });
+            
+            res.redirect('/');
+        } catch (error) {
+            console.error('Job Deletion Error:', error);
+            res.status(500).send('Failed to delete job.');
+        }
+    });
+
+    // 2. Create CV (Step 14)
+    router.post('/details/create-cv/:id', async (req, res) => {
+        const id = req.params.id;
+        try {
+            const job = await Application.findByPk(id, { raw: true });
+            const profile = await Profile.findByPk(1, { raw: true });
+            if (!job || !profile) return res.status(404).send('Resource not found.');
+
+            const jobDir = path.join(__dirname, '..', 'documents', 'job-description', sanitize(job.company), sanitize(job.title));
+
+            // Generate the tailored CV content (using Gemini API call logic from /tailor)
+            const prompt = `You are an expert resume writer. Given the following job description and candidate profile, generate a highly tailored CV (in Markdown format) focusing on maximizing keyword relevance. The job is: ${JSON.stringify(job)} and the profile is: ${JSON.stringify(profile)}.`;
+            
+            const response = await ai.models.generateContent({
+                model: "gemini-2.5-flash",
+                contents: [{ role: "user", parts: [{ text: prompt }] }],
+                config: { temperature: 0.2 },
+            });
+
+            const cvContent = response.text.trim();
+            const cvFilePath = path.join(jobDir, `tailored_cv_${job.company}.md`);
+            fs.writeFileSync(cvFilePath, cvContent);
+
+            // Update database status
+            await Application.update({ cv_created: true }, { where: { id: id } });
+
+            res.redirect(`/details/${id}`);
+        } catch (error) {
+            console.error('Create CV Error:', error);
+            res.status(500).send('Failed to create tailored CV via AI.');
+        }
+    });
+
+    // 3. Create Cover Letter (Step 14)
+    router.post('/details/create-cl/:id', async (req, res) => {
+        const id = req.params.id;
+        try {
+            const job = await Application.findByPk(id, { raw: true });
+            const profile = await Profile.findByPk(1, { raw: true });
+            if (!job || !profile) return res.status(404).send('Resource not found.');
+
+            const jobDir = path.join(__dirname, '..', 'documents', 'job-description', sanitize(job.company), sanitize(job.title));
+
+            // Generate the cover letter content (using Gemini API call logic from /cover-letter)
+            const prompt = `Write a concise, compelling cover letter (in Markdown format) for the job: ${JSON.stringify(job)} using the candidate's summary: ${profile.summary}.`;
+            
+            const response = await ai.models.generateContent({
+                model: "gemini-2.5-flash",
+                contents: [{ role: "user", parts: [{ text: prompt }] }],
+                config: { temperature: 0.5 },
+            });
+
+            const clContent = response.text.trim();
+            const clFilePath = path.join(jobDir, `cover_letter_${job.company}.md`);
+            fs.writeFileSync(clFilePath, clContent);
+
+            // Update database status
+            await Application.update({ cover_letter_created: true }, { where: { id: id } });
+
+            res.redirect(`/details/${id}`);
+        } catch (error) {
+            console.error('Create CL Error:', error);
+            res.status(500).send('Failed to create cover letter via AI.');
+        }
+    });
 
     return router;
 };

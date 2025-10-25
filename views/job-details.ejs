@@ -1,0 +1,71 @@
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="mb-0">Job Details: <%= job.title %></h1>
+        <a href="/" class="btn btn-secondary">← Back to Dashboard (Cancel)</a>
+    </div>
+
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-primary text-white">Application Status</div>
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item"><strong>Company:</strong> <%= job.company %></li>
+                    <li class="list-group-item"><strong>Location:</strong> <%= job.location || 'N/A' %></li>
+                    <li class="list-group-item"><strong>Current Status:</strong> 
+                        <span class="badge bg-info"><%= job.status %></span>
+                    </li>
+                    <li class="list-group-item">
+                        <strong>Application URL:</strong>
+                        <% if (job.application_url) { %>
+                            <a href="<%= job.application_url %>" target="_blank" class="text-decoration-none">Open Ad</a>
+                        <% } else { %>
+                            N/A
+                        <% } %>
+                    </li>
+                    <li class="list-group-item"><strong>Date Applied:</strong> <%= job.date_applied || 'N/A' %></li>
+                </ul>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-dark text-white">Contact Person Details</div>
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item"><strong>Name:</strong> <%= job.contact_name || 'N/A' %></li>
+                    <li class="list-group-item"><strong>Email:</strong> <%= job.contact_email || 'N/A' %></li>
+                    <li class="list-group-item"><strong>Phone:</strong> <%= job.contact_phone || 'N/A' %></li>
+                </ul>
+            </div>
+            
+             <div class="d-grid gap-2">
+                <form action="/details/create-cv/<%= job.id %>" method="POST" onsubmit="return confirm('Generate tailored CV via AI?');">
+                    <button type="submit" class="btn btn-warning w-100 mb-2">📄 Create Tailored CV (.md)</button>
+                </form>
+                <form action="/details/create-cl/<%= job.id %>" method="POST" onsubmit="return confirm('Generate Cover Letter via AI?');">
+                    <button type="submit" class="btn btn-warning w-100 mb-2">✉️ Create Cover Letter (.md)</button>
+                </form>
+                
+                <form action="/details/delete/<%= job.id %>" method="POST" onsubmit="return confirm('Are you sure you want to delete this job and associated files?');">
+                    <button type="submit" class="btn btn-danger w-100 mb-2">🗑️ Delete Job</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-info text-white">Job Notes / Details (Previous Notes)</div>
+                <div class="card-body">
+                    <p class="card-text"><%= job.notes || 'No detailed notes available.' %></p>
+                </div>
+            </div>
+            
+            <div class="alert alert-secondary mt-3">
+                <h6 class="alert-heading">Document Path (Auto-Created)</h6>
+                <p class="mb-0 small">
+                    **CV Template Copied:** A copy of your base CV template has been placed here for modification.
+                </p>
+                <code class="d-block mt-2 small p-2 bg-light rounded">
+                    <%= jobDir %>
+                </code>
+            </div>
+        </div>
+    </div>
+</div>

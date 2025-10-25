@@ -24,12 +24,43 @@ const Application = sequelize.define('Application', {
     status: { type: DataTypes.TEXT, defaultValue: 'New' },
     notes: { type: DataTypes.TEXT },
     date_applied: { type: DataTypes.TEXT },
+
+    application_url: { type: DataTypes.TEXT }, 
+    contact_name: { type: DataTypes.TEXT },    
+    contact_phone: { type: DataTypes.TEXT },   
+    contact_email: { type: DataTypes.TEXT },   
+    cv_created: { type: DataTypes.BOOLEAN, defaultValue: false },
+    cover_letter_created: { type: DataTypes.BOOLEAN, defaultValue: false },
 }, {
-    tableName: 'applications', // Maps to the existing table name
-    timestamps: false // Assuming you don't need 'createdAt' and 'updatedAt' columns
+    tableName: 'applications',
+    timestamps: true 
 });
 
-// --- 3. Synchronization and Export ---
+
+// --- 3. Define the Model (Profile) ---
+const Profile = sequelize.define('Profile', {
+    // We use a fixed ID since we only support one user from .env for now
+    id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        defaultValue: 1, 
+    },
+    full_name: { type: DataTypes.TEXT, allowNull: false },
+    job_title: { type: DataTypes.TEXT },
+    linkedin_url: { type: DataTypes.TEXT },
+    contact_email: { type: DataTypes.TEXT },
+    phone: { type: DataTypes.TEXT },
+    summary: { type: DataTypes.TEXT },
+    experience: { type: DataTypes.JSON }, // Store complex data as JSON
+    education: { type: DataTypes.JSON },
+    skills: { type: DataTypes.JSON },
+    // Add other fields as detailed as your CV
+}, {
+    tableName: 'profile',
+    timestamps: false
+});
+
+// --- 4. Synchronization and Export ---
 async function initializeDatabase() {
     try {
         await sequelize.authenticate();
@@ -37,7 +68,8 @@ async function initializeDatabase() {
         
         // This command creates the table if it doesn't exist.
         await Application.sync({ force: false }); 
-        console.log('Applications table synced (ensured).');
+        await Profile.sync({ force: false });
+        console.log('Applications and Profile table synced.');
         
         return { sequelize, Application };
     } catch (err) {
